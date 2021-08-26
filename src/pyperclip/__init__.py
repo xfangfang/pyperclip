@@ -22,10 +22,11 @@ For example, in Debian:
     sudo apt-get install xsel
     sudo apt-get install wl-clipboard
 
-Otherwise on Linux, you will need the gtk or PyQt5/PyQt4 modules installed.
+Otherwise on Linux, you will need the gi (GTK+ 3) or PyQt5/PyQt4 modules installed.
+gtk (GTK +2) is still supported as an older alternative to gi.
 
-gtk and PyQt4 modules are not available for Python 3,
-and this module does not work with PyGObject yet.
+gtk and PyQt4 modules are not available for Python 3.
+
 
 Note: There seems to be a way to get gtk on Python 3, according to:
     https://askubuntu.com/questions/697397/python3-is-not-supporting-gtk-module
@@ -146,6 +147,27 @@ def init_osx_pyobjc_clipboard():
         return content
 
     return copy_osx_pyobjc, paste_osx_pyobjc
+
+
+def init_gi_clipboard():
+    import gi
+    gi.require_version('Gtk', '3.0')
+    from gi.repository import Gtk, Gdk
+    cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+
+    def copy_gi(text):
+        cb.set_text(text, -1)
+        cb.store()
+
+    def paste_gi():
+        clipboardContents = cb.wait_for_text()
+        # for python 2, returns None if the clipboard is blank.
+        if clipboardContents is None:
+            return ''
+        else:
+            return clipboardContents
+
+    return copy_gi, paste_gi
 
 
 def init_gtk_clipboard():
@@ -558,11 +580,18 @@ def determine_clipboard():
     # Setup for the LINUX platform:
     if HAS_DISPLAY:
         try:
-            from gtk import Clipboard  # check if gtk is installed
+            import gi  # check if gi is installed (for GTK+ 3)
         except ImportError:
-            pass # We want to fail fast for all non-ImportError exceptions.
+            try:
+                import gtk  # check if gtk is installed (fallback to GTK+ 2)
+            except ImportError:
+                # We want to fail fast for all non-ImportError exceptions.
+                pass
+            else:
+                return init_gtk_clipboard()
         else:
-            return init_gtk_clipboard()
+            if gi.version_info[0] >= 3:
+                return init_gi_clipboard()
 
         if (
                 os.environ.get("WAYLAND_DISPLAY") and
